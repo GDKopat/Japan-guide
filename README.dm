@@ -10,7 +10,7 @@
 
 ## Установка
 
-1. Клонируй репозиторий: git clone https://github.com/твой_аккаунт/japan-guide.git
+1. Клонируй репозиторий: git clone https://github.com/Nikitoskaaa/Japan-guide.git
 2. Установи зависимости: pip install beautifulsoup4 requests
 3. Запусти: python main.py
 
