@@ -1,14 +1,19 @@
-import requests
-import re
-import random
-import time
-import json
+import requests,re,random,time,os,json
 from bs4 import BeautifulSoup
+from urllib.parse import quote
 
-abzaces = {}
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/GDKopat/Japan-facts/refs/heads/main/japan_facts.txt"
+
+###
+###
+###
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/Nikitoskaaa/Japan-facts/refs/heads/main/japan_facts.txt"
+BOT_EMAIL = "your_email@example.com"  # <-- СЮДА ВСТАВИТЬ СВОЮ ПОЧТУ! ! !
+###
+###
+###
 
 def get_random_fact_from_github():
+    clear_console()
     try:
         response = requests.get(GITHUB_RAW_URL,timeout=10)
         response.raise_for_status()
@@ -21,75 +26,65 @@ def get_random_fact_from_github():
         print(f"Ошибка соединения: {e}. Проверьте интернет или ссылку.")
 
 
-def download_wiki_page(city):
-    url = f"https://ru.wikipedia.org/wiki/{city}"
+def get_first_paragraph(city):
+    clear_console()
+
+    url = f"https://ru.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&exintro&explaintext&titles={quote(city)}"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        filename = f"{city}.html"
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(response.text)
-        print(f"Страница сохранена в {filename}, ссылка на википедию -'https://ru.wikipedia.org/wiki/{city}'-")
-        time.sleep(1)
-        return True
-    except Exception as e:
-        print(f"Ошибка загрузки {city}: {e}")
-        return False
+    'User-Agent': f'MyJapanGuideBot/1.0 (https://github.com/GDKopat/Japan-guide; {BOT_EMAIL})'
+}
+    session = requests.Session()
 
+    for attempt in range(3):  # 3 попытки с задержкой
+        try:
+            resp = session.get(url, headers=headers, timeout=10)
 
-def extract_first_paragraph(city):
-    global abzaces
-    filename = f"{city}.html"
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            content = f.read()
-        soup = BeautifulSoup(content, 'html.parser')
-        all_p = soup.find_all('p')
-        for p in all_p:
-            text = p.get_text().strip()
-            if len(text) > 100 and not text.startswith('Для улучшения'):
-                text = re.sub(r'\[\d+\]', '', text)
-                text = re.sub(r'\s+', ' ', text)
-                abzaces[city] = text
-                # Сохраняем в JSON
-                with open("абзацы.json", "w", encoding="utf-8") as f:
-                    json.dump(abzaces, f, ensure_ascii=False, indent=2)
-                print(f"\n Первый абзац про {city}:\n{text}\n Ссылка на википедию -'https://ru.wikipedia.org/wiki/{city}'-")
-                return
-        print(f" Не найден подходящий абзац для {city}")
-    except FileNotFoundError:
-        print(f" Файл {filename} не найден. Сначала скачай страницу.")
-    except Exception as e:
-        print(f" Ошибка парсинга: {e}")
+            # Если статус не 200, пробуем с другим User-Agent
+            if resp.status_code != 200:
+                print(f"⚠️ Статус {resp.status_code}. Повтор через 5 сек...")
+                time.sleep(5)
+                continue
 
+            # Проверяем, что пришёл именно JSON
+            content_type = resp.headers.get('Content-Type', '')
+            if 'application/json' not in content_type:
+                # Возможно, вернулась капча или HTML
+                if 'captcha' in resp.text.lower() or 'block' in resp.text.lower():
+                    print("❌ Википедия запросила капчу. Попробуйте позже или используйте VPN.")
+                    return None
+                print("❌ Сервер вернул не JSON. Проверьте название города.")
+                return None
 
-def searchinjsonabzac(city):
-    global abzaces
-    file = "абзацы.json"
-    try:
-        with open(file, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            if content:
-                abzaces = json.loads(content)
-            else:
-                abzaces = {}
-    except (FileNotFoundError, json.JSONDecodeError):
-        abzaces = {}
+            data = resp.json()
+            pages = data.get('query', {}).get('pages', {})
+            for page_id, page in pages.items():
+                if 'extract' in page:
+                    text = page['extract'].strip()
+                    if text:
+                        print(f"\n📖 📖 📖 {city}:\n{text}\n")
+                        return text
+                    else:
+                        print(f"❌ Для города {city} нет текста.")
+                        return None
+            print(f"❌ Город {city} не найден в Википедии.")
+            return None
 
-    if city in abzaces:
-        print(f"🌸 {abzaces[city]} ссылка на википедию -'https://ru.wikipedia.org/wiki/{city}'-")
-    else:
-        print("Город не найден в сохранённых, приступаю к скачиванию...")
-        if download_wiki_page(city):
-            extract_first_paragraph(city)
-        else:
-            print(f"Не удалось скачать страницу. Ссылка на википедию -'https://ru.wikipedia.org/wiki/{city}'-")
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Ошибка соединения: {e}. Повтор через 5 сек...")
+            time.sleep(5)
+        except json.JSONDecodeError:
+            print("⚠️ Ответ не является JSON. Возможно, блокировка. Повтор через 10 сек...")
+            time.sleep(10)
+        except Exception as e:
+            print(f"⚠️ Неизвестная ошибка: {e}")
+            return None
+
+    print("❌ Не удалось получить данные после 3 попыток.")
+    return None
 
 
 def get_temperature(city):
+    clear_console()
     try:
         print("парсим...")
         link = f"https://wttr.in/{city}?format=%t&lang=ru"
@@ -105,6 +100,7 @@ def get_temperature(city):
 
 
 def get_daily_quote():
+    clear_console()
     print("парсим...")
     try:
         url = "https://meowfacts.herokuapp.com/?lang=rus"
@@ -116,6 +112,10 @@ def get_daily_quote():
         print(f"Не удалось получить факт о кошках: {e}")
 
 
+def clear_console():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+
 def exit_program():
     print("До свидания! Спасибо, что пользуешься гидом.")
     exit(0)
@@ -123,11 +123,12 @@ def exit_program():
 
 menu = {
     "1": get_random_fact_from_github,
-    "2": lambda: searchinjsonabzac(input("Введите название города или места (например, Токио, Осака, Киото, Гора Фудзи): ")),
+    "2": lambda: get_first_paragraph(input("Введите название города или места (например, Токио, Осака, Киото, Гора Фудзи): ")),
     "3": get_daily_quote,
     "4": lambda: get_temperature(input("Введите название города (например, Токио, Осака, Киото): ")),
     "0": exit_program
 }
+
 
 def main():
     while True:
@@ -135,16 +136,17 @@ def main():
         print("    ГИД ПО ЯПОНИИ ")
         print("🌸"*10)
         print("""
-1 - Случайный факт о Японии⛩️
-2 - Узнать о городе/месте (скачать + показать абзац)🔍
-3 - Случайный факт про кошек🐱
-4 - Погода в городе🌦️
-0 - Выход💔""")
+1 - Случайный факт о Японии ⛩️
+2 - Узнать о городе/месте 🔍
+3 - Случайный факт про кошек 🐱
+4 - Погода в городе 🌦️
+0 - Выход 💔💔💔""")
         choice = input("Твой выбор: ")
         if choice in menu:
-            menu[choice]()   # вызываем выбранную функцию
+            menu[choice]()
         else:
             print("Некорректный ввод, попробуй ещё раз.")
+
 
 if __name__ == "__main__":
     main()
