@@ -8,12 +8,6 @@
 - Информация о городе
 - Факты о кошках
 
-## Установка(через консоль)
-
-1. Клонируй репозиторий: git clone https://github.com/GDKopat/Japan-guide
-2. Установи зависимости: pip install beautifulsoup4 requests
-3. Запусти: python main.py
-
 ## Файлы
 - `main.py` — основной скрипт
 - `japan_facts.txt` — факты о Японии (каждый с новой строки)
